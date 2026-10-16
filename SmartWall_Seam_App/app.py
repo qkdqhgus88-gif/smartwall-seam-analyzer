@@ -87,13 +87,6 @@ with st.sidebar:
                                      help='타임랩스가 빠르게 느껴지면 배속을 낮추세요.')
     show_seam=st.checkbox('이음새 표시',value=True,help='끄면 경계 없는 원본 상태와 비교합니다.')
     st.caption('해상도 선택 옵션 없음 — 개별 패널 4K 고정')
-    with st.expander('🛠 정합 보정 (임시)'):
-        st.caption('쇼룸 화면이 디스플레이에 정확히 맞도록 각 변을 드래그해 맞춘 뒤, 아래 좌표값을 알려주세요.')
-        cal_lx=st.slider('왼쪽 변 (x)',0.060,0.240,0.140,0.002)
-        cal_rx=st.slider('오른쪽 변 (x)',0.780,0.960,0.886,0.002)
-        cal_ty=st.slider('위 변 (y)',0.010,0.200,0.070,0.002)
-        cal_by=st.slider('아래 변 (y)',0.600,0.820,0.717,0.002)
-        st.caption(f'좌 {cal_lx:.3f} · 우 {cal_rx:.3f} · 상 {cal_ty:.3f} · 하 {cal_by:.3f}')
 
 w=diag*25.4*16/math.sqrt(16**2+9**2)
 h=diag*25.4*9/math.sqrt(16**2+9**2)
@@ -129,7 +122,7 @@ def room_data_uri():
 
 # Display (active 2×2 screen) corners in the frontal room render, as fractions of the image (TL,TR,BR,BL).
 ROOM_AR_W=1024.0; ROOM_AR_H=683.0
-SCREEN_CORNERS=[[0.140,0.070],[0.886,0.070],[0.886,0.717],[0.140,0.717]]
+SCREEN_CORNERS=[[0.126,0.076],[0.876,0.076],[0.876,0.716],[0.126,0.716]]
 
 
 def room_html(kind, uri, color, frac, visible, speed=0.5, corners=SCREEN_CORNERS):
@@ -186,9 +179,8 @@ elif pattern=='동영상(연속 영상)':
 else:
     disp_kind,disp_uri,disp_color='image',image_data_uri(IMAGE_FILES[subject]),'#0a0c0f'
 
-cal_corners=[[cal_lx,cal_ty],[cal_rx,cal_ty],[cal_rx,cal_by],[cal_lx,cal_by]]
 st.markdown('<div class="sec">실제 공간 미리보기 · 쇼룸</div>', unsafe_allow_html=True)
-components.html(room_html(disp_kind,disp_uri,disp_color,wall_frac,show_seam,video_speed,corners=cal_corners),height=700)
+components.html(room_html(disp_kind,disp_uri,disp_color,wall_frac,show_seam,video_speed),height=700)
 st.markdown('<p class="cap">거실에 4모듈 월 디스플레이를 설치한 모습입니다. 디스플레이 영역에 현재 패턴(흰색·사진·동영상)과 2×2 이음새가 실제 치수 비율로 합성됩니다. 실제 치수 비율에서 이음새는 전체 벽 폭의 약 0.03% 수준이라 거의 보이지 않는 것이 정상입니다.</p>', unsafe_allow_html=True)
 
 m1,m2,m3,m4=st.columns(4)
