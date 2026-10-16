@@ -181,13 +181,13 @@ else:
 
 st.markdown('<div class="sec">실제 공간 미리보기 · 쇼룸</div>', unsafe_allow_html=True)
 components.html(room_html(disp_kind,disp_uri,disp_color,wall_frac,show_seam,video_speed),height=700)
-st.markdown('<p class="cap">거실에 4모듈 월 디스플레이를 설치한 모습입니다. 디스플레이 영역에 현재 패턴(흰색·사진·동영상)과 2×2 이음새가 실제 치수 비율로 합성됩니다. 실제 치수 비율에서 이음새는 전체 벽 폭의 약 0.03% 수준이라 거의 보이지 않는 것이 정상입니다.</p>', unsafe_allow_html=True)
 
 m1,m2,m3,m4=st.columns(4)
 m1.metric('이음새 폭',f'{seam:.2f} mm',help='베젤 두 개 + 기구적 간격')
 m2.metric('픽셀 환산',f'{seam/pitch:.2f} px',help='4K 픽셀 피치 기준')
 m3.metric('벽 대비 이음새',f'{100*wall_frac:.4f}%',help='전체 벽(2패널) 폭 대비 — 화면에 그려지는 비율')
 m4.metric('시야각',f'{angle:.2f}′',help=f'{dist:g}m 시청 거리 기준 (거리 슬라이더에 따라 변함)')
+st.markdown('<p class="cap">거실에 4모듈 월 디스플레이를 설치한 모습입니다. 디스플레이 영역에 현재 패턴(흰색·사진·동영상)과 2×2 이음새가 실제 치수 비율로 합성됩니다. 실제 치수 비율에서 이음새는 전체 벽 폭의 약 0.03% 수준이라 거의 보이지 않는 것이 정상입니다.</p>', unsafe_allow_html=True)
 
 st.divider()
 left,right=st.columns([1,1],gap='large')
