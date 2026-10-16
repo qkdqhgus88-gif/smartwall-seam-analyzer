@@ -57,8 +57,6 @@ header[data-testid="stHeader"]{background:transparent;}
 .status{border-radius:12px;padding:12px 16px;margin-top:14px;font-size:.9rem;font-weight:600;border:1px solid;}
 .status.ok{background:rgba(34,197,94,.10);border-color:rgba(34,197,94,.45);color:#8ef0b0;}
 .status.off{background:rgba(245,158,11,.10);border-color:rgba(245,158,11,.45);color:#f4c87a;}
-[data-testid="stImage"] img{border-radius:12px;border:1px solid var(--line);
-  box-shadow:0 14px 34px rgba(0,0,0,.5);}
 [data-testid="stSidebar"]{background:#0d121c;border-right:1px solid var(--line);}
 .stDownloadButton button,.stButton button{border-radius:10px;}
 .cap{color:var(--muted);font-size:.82rem;line-height:1.5;}
@@ -77,7 +75,7 @@ with st.sidebar:
     bezel=st.slider('각 패널의 내부 베젤 폭 (mm)',0.0,3.0,0.3,0.05,
                     help='네 패널의 가로·세로 내부 경계에 동일한 베젤 폭을 가정합니다.')
     gap=st.slider('패널 사이 기구적 간격 (mm)',0.0,3.0,0.2,0.05)
-    dist=st.slider('시청 거리 (m)',1.0,6.0,3.0,0.5)
+    dist=st.slider('시청 거리 (m)',1.0,6.0,5.0,0.5)
     st.divider()
     pattern=st.radio('화면 패턴',['흰색','컬러(연속 이미지)','동영상(연속 영상)'],index=1)
     subject=None; video_key=None; video_speed=0.5
@@ -96,37 +94,11 @@ seam=bezel*2+gap
 pitch=w/3840
 angle=math.degrees(2*math.atan(seam/(2*dist*1000)))*60
 arc_one=2*dist*1000*math.tan(math.radians(1/60)/2)
-wall_frac=seam/(2*w+seam)  # seam as a fraction of the full 2-panel wall width (what gets drawn)
+wall_frac=seam/(2*w+seam)          # seam as a fraction of the full 2-panel wall width (what gets drawn)
+wall_w_m=(2*w+seam)/1000.0
+wall_h_m=(2*h+seam)/1000.0
 
-
-@st.cache_data(show_spinner=False)
-def load_scene(pattern, subject):
-    if pattern!='컬러(연속 이미지)':
-        return Image.new('RGB',(1600,900),(245,245,245))
-    name={'풍경':'landscape.jpg','거실 인테리어':'interior.jpg','도시 야경':'city.jpg','추상 패턴':'abstract.jpg'}[subject]
-    return Image.open(BASE/'assets'/name).convert('RGB')
-
-
-def render_wall(image, panel_w, s, visible, out_w=1600):
-    """One source image shown across the full 2-panel wall, with a true-scale 2×2 seam overlaid.
-    The seam covers a strip of width s/(2*panel_w+s) of the wall; fractional coverage keeps
-    sub-pixel seams physically faithful after downscale (no artificial thickening).
-    """
-    size=2400
-    line_px=(s/(2*panel_w+s)*size) if visible else 0.0
-    out_h=round(size*9/16)
-    scene=image.resize((size,out_h),Image.Resampling.LANCZOS)
-    if visible and line_px>0:
-        arr=np.asarray(scene).astype(np.float32).copy()
-        cx,cy=size/2,out_h/2
-        coverage_x=np.clip(np.minimum(np.arange(size)+1,cx+line_px/2)-np.maximum(np.arange(size),cx-line_px/2),0,1)
-        coverage_y=np.clip(np.minimum(np.arange(out_h)+1,cy+line_px/2)-np.maximum(np.arange(out_h),cy-line_px/2),0,1)
-        alpha=1-(1-coverage_y[:,None])*(1-coverage_x[None,:])
-        arr=arr*(1-alpha[:,:,None])+np.array([10,12,15],dtype=np.float32)*alpha[:,:,None]
-        scene=Image.fromarray(np.uint8(np.clip(arr,0,255)))
-    return scene.resize((out_w,round(out_w*9/16)),Image.Resampling.LANCZOS)
-
-
+IMAGE_FILES={'풍경':'landscape.jpg','거실 인테리어':'interior.jpg','도시 야경':'city.jpg','추상 패턴':'abstract.jpg'}
 VIDEO_FILES={'산 풍경 타임랩스':'vid_mountain.mp4','밤하늘·호수':'vid_nightsky.mp4'}
 
 
@@ -136,71 +108,111 @@ def video_data_uri(filename):
     return 'data:video/mp4;base64,'+base64.b64encode(data).decode('ascii')
 
 
-def seam_wall_html(filename, frac, visible, speed=0.5):
-    """Play one continuous clip with a true-scale 2×2 seam overlaid (no re-encoding).
-    JS measures the real player width and draws the seam at exactly `frac` of it, matching the
-    image path: a sub-pixel seam becomes a 1px line at reduced opacity (same faithful appearance).
-    """
-    uri=video_data_uri(filename)
+@st.cache_data(show_spinner=False)
+def image_data_uri(filename):
+    img=Image.open(BASE/'assets'/filename).convert('RGB')
+    buf=io.BytesIO(); img.save(buf,format='JPEG',quality=86)
+    return 'data:image/jpeg;base64,'+base64.b64encode(buf.getvalue()).decode('ascii')
+
+
+PLANT=('<svg class="plant" viewBox="0 0 60 92" preserveAspectRatio="xMidYMax meet">'
+       '<path d="M30 58 C9 42 5 20 15 5 C21 20 25 32 30 44 C35 26 41 14 55 7 C51 29 44 46 32 58 Z" fill="#223a2d"/>'
+       '<path d="M30 58 C24 48 20 40 19 30 C26 38 29 48 30 58 Z" fill="#2c4a39"/>'
+       '<rect x="20" y="57" width="20" height="30" rx="4" fill="#191410"/>'
+       '</svg>')
+
+
+def room_html(kind, uri, color, frac, wmeter, hmeter, visible, speed=0.5):
+    """Showroom composite: the 2×2 wall mounted on a living-room back wall, viewed head-on.
+    The screen is centered; the room fills around it. Content (white/photo/video) sits in the
+    screen with a true-scale 2×2 seam (sub-pixel seam = 1px at reduced opacity, same as faithful)."""
     vis='true' if (visible and frac>0) else 'false'
+    if kind=='video':
+        media=f'<video id="m" src="{uri}" autoplay muted loop playsinline></video>'
+    elif kind=='image':
+        media=f'<img id="m" src="{uri}">'
+    else:
+        media=''
+    css=('html,body{margin:0;background:transparent}*{box-sizing:border-box}'
+         '.scene{position:relative;width:100%;max-width:1040px;margin:0 auto;aspect-ratio:16/10;'
+         'border-radius:14px;overflow:hidden;border:1px solid #2a2622;'
+         'background:linear-gradient(180deg,#2c2821 0%,#272218 55%,#1b1712 100%)}'
+         '.wallglow{position:absolute;left:50%;top:-12%;width:78%;height:72%;transform:translateX(-50%);'
+         'background:radial-gradient(closest-side,rgba(255,208,150,.12),transparent 70%);pointer-events:none}'
+         '.light{position:absolute;top:3%;width:6px;height:6px;border-radius:50%;background:#ffe9c7;'
+         'box-shadow:0 0 16px 7px rgba(255,205,140,.4)}'
+         '.frame{position:absolute;top:21%;width:7%;aspect-ratio:3/4;border:2px solid #0f0d0a;'
+         'border-radius:3px;background:#2f4a60;box-shadow:0 6px 16px rgba(0,0,0,.45)}'
+         '.plant{position:absolute;bottom:19%;width:6.5%;filter:drop-shadow(0 8px 10px rgba(0,0,0,.5))}'
+         '.floor{position:absolute;left:0;right:0;bottom:0;height:20%;'
+         'background:linear-gradient(180deg,#151109,#0b0805);border-top:1px solid rgba(255,255,255,.05);'
+         'box-shadow:inset 0 26px 40px rgba(0,0,0,.55)}'
+         '.rug{position:absolute;left:50%;transform:translateX(-50%);bottom:4%;width:46%;height:9%;'
+         'background:radial-gradient(closest-side,rgba(255,235,205,.06),transparent 72%);border-radius:50%}'
+         '.stand{position:absolute;left:50%;top:9%;transform:translateX(-50%);width:62%}'
+         '.screen{position:relative;width:100%;aspect-ratio:16/9;background:'+color+';'
+         'border:5px solid #0a0a0b;border-radius:4px;overflow:hidden;'
+         'box-shadow:0 0 80px 10px rgba(120,150,210,.18),0 24px 54px rgba(0,0,0,.6)}'
+         '#m{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}'
+         '.seam{position:absolute;background:#0a0c0f;display:none}'
+         '.dim{width:100%;text-align:center;color:#d3c0a2;font:600 12px system-ui,sans-serif;'
+         'margin-top:9px;border-top:1px solid rgba(211,192,162,.45);padding-top:5px}')
     return (
-        '<!doctype html><html><head><meta charset="utf-8"><style>'
-        'html,body{margin:0;background:transparent}'
-        '.wrap{position:relative;width:100%;max-width:820px;margin:0 auto;aspect-ratio:16/9;'
-        'background:#0a0c0f;border-radius:12px;overflow:hidden;border:1px solid #273142;'
-        'box-shadow:0 14px 34px rgba(0,0,0,.5)}'
-        'video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}'
-        '.seam{position:absolute;background:#0a0c0f;display:none}'
-        '</style></head><body><div class="wrap">'
-        f'<video src="{uri}" autoplay muted loop playsinline controls></video>'
+        '<!doctype html><html><head><meta charset="utf-8"><style>'+css+'</style></head><body>'
+        '<div class="scene">'
+        '<div class="wallglow"></div>'
+        '<div class="light" style="left:32%"></div><div class="light" style="left:50%"></div><div class="light" style="left:68%"></div>'
+        '<div class="frame" style="left:4%"></div><div class="frame" style="right:4%"></div>'
+        '<div class="floor"></div><div class="rug"></div>'
+        '<div class="plant" style="left:2.5%">'+PLANT+'</div>'
+        '<div class="plant" style="right:2.5%">'+PLANT+'</div>'
+        '<div class="stand"><div class="screen">'+media+
         '<div id="vseam" class="seam" style="left:50%;top:0;height:100%;transform:translateX(-50%)"></div>'
         '<div id="hseam" class="seam" style="top:50%;left:0;width:100%;transform:translateY(-50%)"></div>'
+        '</div>'
+        f'<div class="dim">{wmeter:.2f} m × {hmeter:.2f} m</div>'
+        '</div></div>'
         '<script>(function(){'
-        'var v=document.querySelector("video"),wrap=document.querySelector(".wrap");'
+        'var screen=document.querySelector(".screen"),m=document.getElementById("m");'
         'var vs=document.getElementById("vseam"),hs=document.getElementById("hseam");'
         f'var frac={frac:.8f},vis={vis},speed={speed};'
-        'function spd(){try{v.playbackRate=speed;}catch(e){}}'
-        'function layout(){if(!vis){return;}var W=wrap.clientWidth,t=frac*W,op=1;'
-        'if(t<1){op=t;t=1;}vs.style.display="block";hs.style.display="block";'
+        'if(m&&m.tagName==="VIDEO"){var sp=function(){try{m.playbackRate=speed;}catch(e){}};'
+        'm.addEventListener("loadedmetadata",sp);m.addEventListener("play",sp);sp();}'
+        'function layout(){if(!vis){vs.style.display="none";hs.style.display="none";return;}'
+        'var W=screen.clientWidth,t=frac*W,op=1;if(t<1){op=t;t=1;}'
+        'vs.style.display="block";hs.style.display="block";'
         'vs.style.width=t+"px";vs.style.opacity=op;hs.style.height=t+"px";hs.style.opacity=op;}'
-        'v.addEventListener("loadedmetadata",spd);v.addEventListener("play",spd);spd();'
         'window.addEventListener("resize",layout);layout();setTimeout(layout,200);'
-        '})();</script>'
-        '</div></body></html>')
+        '})();</script></body></html>')
 
 
-is_video=(pattern=='동영상(연속 영상)')
-image=None
-if not is_video:
-    scene=load_scene(pattern,subject)
-    image=render_wall(scene,w,seam,show_seam)
+if pattern=='흰색':
+    disp_kind,disp_uri,disp_color='white','','#f4f4f4'
+elif pattern=='동영상(연속 영상)':
+    disp_kind,disp_uri,disp_color='video',video_data_uri(VIDEO_FILES[video_key]),'#0a0c0f'
+else:
+    disp_kind,disp_uri,disp_color='image',image_data_uri(IMAGE_FILES[subject]),'#0a0c0f'
 
-main,details=st.columns([1.85,1],gap='large')
-with main:
-    st.markdown('<div class="sec">4모듈 OLED 월 미리보기</div>', unsafe_allow_html=True)
-    if is_video:
-        components.html(seam_wall_html(VIDEO_FILES[video_key],wall_frac,show_seam,video_speed),height=480)
-        st.markdown('<p class="cap">단일 연속 영상을 2×2로 분할 · 음소거 자동 반복 재생 · 이음새는 실제 치수 비율(소리 없음)</p>', unsafe_allow_html=True)
-    else:
-        st.image(image,use_container_width=True)
-        st.markdown('<p class="cap">4개 영역 모두 단일 원본을 분할한 연속 콘텐츠 · 이음새는 실제 치수 비율</p>', unsafe_allow_html=True)
-        mem=io.BytesIO();image.save(mem,format='PNG')
-        st.download_button('현재 화면 PNG 저장',data=mem.getvalue(),file_name='smartwall_seam_preview.png',mime='image/png')
-    st.markdown('<p class="cap">실제 치수 비율에서 이음새는 전체 벽 폭의 약 0.03% 수준이라 서브픽셀로 거의 보이지 않는 것이 정상입니다. 베젤·기구 간격을 키우거나 이음새 표시를 끄고 켜며 비교해 보세요. 흰 배경·사진·동영상 모두 동일한 비율로 그려집니다.</p>', unsafe_allow_html=True)
+st.markdown('<div class="sec">실제 공간 미리보기 · 쇼룸</div>', unsafe_allow_html=True)
+components.html(room_html(disp_kind,disp_uri,disp_color,wall_frac,wall_w_m,wall_h_m,show_seam,video_speed),height=690)
+st.markdown('<p class="cap">거실 벽면에 4모듈 월 디스플레이를 설치한 정면 뷰입니다. 가운데 화면에 현재 패턴(흰색·사진·동영상)과 2×2 이음새가 실제 치수 비율로 합성됩니다. 실제 치수 비율에서 이음새는 전체 벽 폭의 약 0.03% 수준이라 거의 보이지 않는 것이 정상입니다.</p>', unsafe_allow_html=True)
 
-with details:
-    st.markdown('<div class="sec">계산 결과</div>', unsafe_allow_html=True)
-    c1,c2=st.columns(2)
-    c1.metric('전체 이음새 폭',f'{seam:.2f} mm',help='베젤 두 개 + 기구적 간격')
-    c2.metric('시야각',f'{angle:.2f}′',help=f'{dist:g}m 시청 거리 기준')
-    c3,c4=st.columns(2)
-    c3.metric('픽셀 환산 폭',f'{seam/pitch:.2f} px')
-    c4.metric('4K 픽셀 피치',f'{pitch:.3f} mm')
+m1,m2,m3,m4=st.columns(4)
+m1.metric('이음새 폭',f'{seam:.2f} mm',help='베젤 두 개 + 기구적 간격')
+m2.metric('픽셀 환산',f'{seam/pitch:.2f} px',help='4K 픽셀 피치 기준')
+m3.metric('벽 대비 이음새',f'{100*wall_frac:.4f}%',help='전체 벽(2패널) 폭 대비 — 화면에 그려지는 비율')
+m4.metric('시야각',f'{angle:.2f}′',help=f'{dist:g}m 시청 거리 기준 (거리 슬라이더에 따라 변함)')
+
+st.divider()
+left,right=st.columns([1,1],gap='large')
+with left:
+    st.markdown('<div class="sec">세부 수치</div>', unsafe_allow_html=True)
     st.markdown(f'''<div class="panel">
 <div class="row"><span>패널 1장 활성 화면</span><b>{w:,.1f} × {h:,.1f} mm</b></div>
+<div class="row"><span>전체 벽(2×2) 크기</span><b>{wall_w_m:.2f} × {wall_h_m:.2f} m</b></div>
 <div class="row"><span>단일 패널 폭 대비 이음새</span><b>{100*seam/w:.4f}%</b></div>
-<div class="row"><span>전체 벽 폭 대비 (화면 렌더 비율)</span><b>{100*wall_frac:.4f}%</b></div>
 <div class="row"><span>화면 1000px당 이음새</span><b>약 {wall_frac*1000:.2f} px</b></div>
+<div class="row"><span>4K 픽셀 피치</span><b>{pitch:.3f} mm</b></div>
 <div class="row"><span>{dist:g}m에서 1분각 길이</span><b>{arc_one:.2f} mm</b></div>
 <div class="row"><span>이음새 구성 (좌+간격+우)</span><b>{bezel:.2f} + {gap:.2f} + {bezel:.2f} = {seam:.2f} mm</b></div>
 </div>''', unsafe_allow_html=True)
@@ -209,15 +221,14 @@ with details:
     else:
         st.markdown('<div class="status off">! 팀 PPT의 잠정 목표 2.0 ± 0.5 mm 범위 밖</div>', unsafe_allow_html=True)
     st.markdown('<p class="cap">사전 설계 목표와의 비교이며 실제 품질 합격 판정이 아닙니다. 시청 거리는 시야각(분각)에만 영향을 주고, 화면에 그려지는 이음새 비율은 바꾸지 않습니다.</p>', unsafe_allow_html=True)
-
-st.divider()
-st.markdown('<div class="sec">설계안 비교 · 현재 조건과 1mm 이음새</div>', unsafe_allow_html=True)
-comparison=pd.DataFrame([
-    {'설계안':'현재 입력','이음새 폭(mm)':round(seam,2),'시야각(분각)':round(angle,3),'픽셀 환산(px)':round(seam/pitch,2)},
-    {'설계안':'이음새 1mm 가정','이음새 폭(mm)':1.0,'시야각(분각)':round(math.degrees(2*math.atan(1/(2*dist*1000)))*60,3),'픽셀 환산(px)':round(1/pitch,2)},
-])
-st.dataframe(comparison,hide_index=True,use_container_width=True)
-st.download_button('비교 결과 CSV 다운로드',data=comparison.to_csv(index=False).encode('utf-8-sig'),file_name='smartwall_seam_metrics.csv',mime='text/csv')
+with right:
+    st.markdown('<div class="sec">설계안 비교 · 현재 조건과 1mm 이음새</div>', unsafe_allow_html=True)
+    comparison=pd.DataFrame([
+        {'설계안':'현재 입력','이음새 폭(mm)':round(seam,2),'시야각(분각)':round(angle,3),'픽셀 환산(px)':round(seam/pitch,2)},
+        {'설계안':'이음새 1mm 가정','이음새 폭(mm)':1.0,'시야각(분각)':round(math.degrees(2*math.atan(1/(2*dist*1000)))*60,3),'픽셀 환산(px)':round(1/pitch,2)},
+    ])
+    st.dataframe(comparison,hide_index=True,use_container_width=True)
+    st.download_button('비교 결과 CSV 다운로드',data=comparison.to_csv(index=False).encode('utf-8-sig'),file_name='smartwall_seam_metrics.csv',mime='text/csv')
 
 with st.expander('계산식 · 적용 범위 · 해석상 주의사항'):
     st.latex(r'W = D\times 25.4\times \frac{16}{\sqrt{16^2+9^2}}')
@@ -228,4 +239,4 @@ with st.expander('계산식 · 적용 범위 · 해석상 주의사항'):
     st.warning('실제 비율 화면은 모니터 해상도에서 서브픽셀 두께가 되어 거의 보이지 않을 수 있습니다. 이것이 실제 시청 환경에서 이음새가 보이지 않는다는 뜻은 아닙니다. 1분각 역시 시인성 합격/불합격의 절대 기준이 아닙니다.')
     st.write('모듈의 베젤은 내부 비발광 가장자리를 뜻하며, 네 모듈에 동일한 값으로 모델링했습니다. 모든 화면 크기는 활성 화면(16:9) 기준입니다. 봉지 여백, 반사율, 밝기, 색 편차, 단차, 관측각과 실제 롤러블 구조는 반영되지 않았습니다. 55/65/77형 4K 롤러블 모듈의 상용 공급 가능성을 뜻하지 않습니다.')
     st.write('모든 베젤/간격 입력값은 사용자가 정하는 설계 가정입니다. 실제 측정값이 아닙니다.')
-    st.caption('연속 이미지 4종은 Unsplash 무료 라이선스 사진, 연속 영상 2종은 Mixkit 무료 라이선스 영상입니다.')
+    st.caption('연속 이미지 4종은 Unsplash 무료 라이선스 사진, 연속 영상 2종은 Mixkit 무료 라이선스 영상입니다. 쇼룸 배경은 CSS로 그린 연출이며 실제 설치 사진이 아닙니다.')
