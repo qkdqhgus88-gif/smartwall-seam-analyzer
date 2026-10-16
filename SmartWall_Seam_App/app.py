@@ -120,9 +120,9 @@ def room_data_uri():
     data=(BASE/'assets'/'room.webp').read_bytes()
     return 'data:image/webp;base64,'+base64.b64encode(data).decode('ascii')
 
-# Display quad corners in the room photo, as fractions of the cropped room region (TL,TR,BR,BL).
-ROOM_AR_W=860.0; ROOM_AR_H=518.0   # cropped room region (spec bar removed)
-SCREEN_CORNERS=[[0.1477,0.0637],[0.7349,0.1351],[0.7349,0.7278],[0.1477,0.7587]]
+# Display (active 2×2 screen) corners in the frontal room render, as fractions of the image (TL,TR,BR,BL).
+ROOM_AR_W=1024.0; ROOM_AR_H=683.0
+SCREEN_CORNERS=[[0.127,0.085],[0.872,0.085],[0.872,0.717],[0.127,0.717]]
 
 
 def room_html(kind, uri, color, frac, visible, speed=0.5):
@@ -140,7 +140,7 @@ def room_html(kind, uri, color, frac, visible, speed=0.5):
     css=('html,body{margin:0;background:transparent}*{box-sizing:border-box}'
          '.scene{position:relative;width:100%;max-width:1020px;margin:0 auto;aspect-ratio:'+f'{ROOM_AR_W}/{ROOM_AR_H}'+';'
          'border-radius:12px;overflow:hidden;border:1px solid #2a2622;'
-         "background-image:url('"+bg+"');background-size:100% auto;background-position:top left;background-repeat:no-repeat}"
+         "background-image:url('"+bg+"');background-size:cover;background-position:center;background-repeat:no-repeat}"
          '#warp{position:absolute;left:0;top:0;width:1000px;height:562px;transform-origin:0 0;background:'+color+'}'
          '#m{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}'
          '.seam{position:absolute;background:#0a0c0f;display:none}')
@@ -180,7 +180,7 @@ else:
     disp_kind,disp_uri,disp_color='image',image_data_uri(IMAGE_FILES[subject]),'#0a0c0f'
 
 st.markdown('<div class="sec">실제 공간 미리보기 · 쇼룸</div>', unsafe_allow_html=True)
-components.html(room_html(disp_kind,disp_uri,disp_color,wall_frac,show_seam,video_speed),height=650)
+components.html(room_html(disp_kind,disp_uri,disp_color,wall_frac,show_seam,video_speed),height=700)
 st.markdown('<p class="cap">거실에 4모듈 월 디스플레이를 설치한 모습입니다. 디스플레이 영역에 현재 패턴(흰색·사진·동영상)과 2×2 이음새가 실제 치수 비율로 합성됩니다. 실제 치수 비율에서 이음새는 전체 벽 폭의 약 0.03% 수준이라 거의 보이지 않는 것이 정상입니다.</p>', unsafe_allow_html=True)
 
 m1,m2,m3,m4=st.columns(4)
