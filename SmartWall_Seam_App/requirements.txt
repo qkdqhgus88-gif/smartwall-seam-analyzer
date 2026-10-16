@@ -2,5 +2,3 @@ streamlit>=1.36
 Pillow>=10.0
 numpy>=1.24
 pandas>=2.0
-imageio>=2.31
-imageio-ffmpeg>=0.4.9

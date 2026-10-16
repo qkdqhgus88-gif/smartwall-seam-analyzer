@@ -5,9 +5,11 @@ All bezel values and visualizations are illustrative design scenarios, not measu
 from pathlib import Path
 import io
 import math
+import base64
 import numpy as np
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 from PIL import Image, ImageDraw
 
 BASE = Path(__file__).resolve().parent
@@ -28,12 +30,14 @@ with st.sidebar:
                     help='네 패널의 가로·세로 내부 경계에 동일한 베젤 폭을 가정합니다.')
     gap=st.slider('패널 사이 기구적 간격 (mm)',0.0,3.0,0.2,0.05)
     dist=st.slider('시청 거리 (m)',1.0,6.0,3.0,0.5)
-    pattern=st.radio('화면 패턴',['흰색','컬러(연속 이미지)'],horizontal=True,index=1)
-    subject=None
+    pattern=st.radio('화면 패턴',['흰색','컬러(연속 이미지)','동영상(연속 영상)'],index=1)
+    subject=None; video_key=None
     if pattern=='컬러(연속 이미지)':
         subject=st.selectbox('연속 이미지 종류',['풍경','거실 인테리어','도시 야경','추상 패턴'])
+    elif pattern=='동영상(연속 영상)':
+        video_key=st.selectbox('연속 영상 종류',['산 풍경 타임랩스','바다 일몰','도시 야경','밤하늘·호수'])
     display_mode=st.radio('이음새 표시 배율',['실제 치수 비율','이음새 확대'],horizontal=True)
-    show_seam=st.checkbox('이음새 표시',value=True,help='끄면 원본 연속 영상의 경계 없는 상태를 비교합니다.')
+    show_seam=st.checkbox('이음새 표시',value=True,help='끄면 경계 없는 원본 상태와 비교합니다.')
     st.caption('해상도 선택 옵션 없음 — 개별 패널 4K 고정')
 
 w=diag*25.4*16/math.sqrt(16**2+9**2)
@@ -95,47 +99,54 @@ def render_wall(image, panel_w, panel_h, s, mode, visible, out_w=1600):
     return scene.resize((out_w,round(out_w*9/16)),Image.Resampling.LANCZOS)
 
 
-@st.cache_data(show_spinner=False, max_entries=3)
-def process_video(file_bytes, panel_w, panel_h, s, mode, visible, max_seconds=6, out_w=1280):
-    """Apply the same 2×2 seam compositing to every frame of an uploaded clip.
-    Bounded by max_seconds and down-scaled to out_w so it stays light on Streamlit Cloud.
-    Returns (mp4_bytes, used_frames, fps) or raises on decode/encode failure.
-    """
-    import tempfile, os, imageio
-    tmp_in = tempfile.NamedTemporaryFile(suffix='.mp4', delete=False)
-    tmp_in.write(file_bytes); tmp_in.close()
-    out_path = tempfile.NamedTemporaryFile(suffix='.mp4', delete=False); out_path.close()
-    reader = imageio.get_reader(tmp_in.name)
-    fps = float(reader.get_meta_data().get('fps', 24) or 24)
-    max_frames = max(1, int(fps*max_seconds))
-    writer = imageio.get_writer(out_path.name, fps=fps, codec='libx264',
-                                quality=8, macro_block_size=16, pixelformat='yuv420p')
-    used = 0
-    try:
-        for i, frame in enumerate(reader):
-            if i >= max_frames:
-                break
-            img = Image.fromarray(np.asarray(frame)[:, :, :3])
-            rendered = render_wall(img, panel_w, panel_h, s, mode, visible, out_w=out_w)
-            writer.append_data(np.asarray(rendered))
-            used += 1
-    finally:
-        writer.close(); reader.close()
-        data = open(out_path.name, 'rb').read()
-        for p in (tmp_in.name, out_path.name):
-            try: os.unlink(p)
-            except OSError: pass
-    return data, used, fps
+VIDEO_FILES={'산 풍경 타임랩스':'vid_mountain.mp4','바다 일몰':'vid_sea.mp4',
+             '도시 야경':'vid_citynight.mp4','밤하늘·호수':'vid_nightsky.mp4'}
 
-scene=load_scene(pattern,subject)
-image=render_wall(scene,w,h,seam,display_mode,show_seam)
+@st.cache_data(show_spinner=False)
+def video_data_uri(filename):
+    data=(BASE/'assets'/filename).read_bytes()
+    return 'data:video/mp4;base64,'+base64.b64encode(data).decode('ascii')
+
+
+def seam_wall_html(filename, panel_w, s, mode, visible):
+    """Play one continuous clip with a 2×2 seam cross overlaid, no re-encoding.
+    Real: seam width is the true physical fraction of the wall. Zoom: exaggerated so it is clearly visible.
+    """
+    true_frac=s/(2*panel_w+s)
+    frac=true_frac if mode=='실제 치수 비율' else min(0.06, 0.004+s*0.012)
+    lines=''
+    if visible and frac>0:
+        vt=frac*100; ht=frac*(16/9)*100
+        lines=(f'<div class="seam" style="left:50%;top:0;height:100%;width:{vt:.4f}%;transform:translateX(-50%)"></div>'
+               f'<div class="seam" style="top:50%;left:0;width:100%;height:{ht:.4f}%;transform:translateY(-50%)"></div>')
+    uri=video_data_uri(filename)
+    return (f'<!doctype html><html><head><meta charset="utf-8"><style>'
+            f'html,body{{margin:0;background:transparent}}'
+            f'.wrap{{position:relative;width:100%;max-width:760px;margin:0 auto;aspect-ratio:16/9;'
+            f'background:#0a0c0f;border-radius:6px;overflow:hidden}}'
+            f'video{{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}}'
+            f'.seam{{position:absolute;background:#0a0c0f}}'
+            f'</style></head><body><div class="wrap">'
+            f'<video src="{uri}" autoplay muted loop playsinline controls></video>{lines}'
+            f'</div></body></html>')
+
+is_video=(pattern=='동영상(연속 영상)')
+image=None
+if not is_video:
+    scene=load_scene(pattern,subject)
+    image=render_wall(scene,w,h,seam,display_mode,show_seam)
 main,details=st.columns([1.85,1],gap='large')
 with main:
     st.subheader('4모듈 OLED 화면 구성')
-    st.image(image,caption=('실제 패널·이음새 치수 비율' if display_mode=='실제 치수 비율' else '이음새를 확대해 강조한 비교 화면') + ' · 4개 영역 모두 단일 원본 이미지 기반',use_container_width=True)
-    st.info('컬러 패턴은 하나의 원본 이미지를 2×2로 분할한 연속 콘텐츠입니다. 이음새 OFF와 ON을 비교해 보세요.')
-    mem=io.BytesIO();image.save(mem,format='PNG')
-    st.download_button('현재 화면 PNG 저장',data=mem.getvalue(),file_name='smartwall_seam_preview.png',mime='image/png')
+    if is_video:
+        components.html(seam_wall_html(VIDEO_FILES[video_key],w,seam,display_mode,show_seam),height=440)
+        st.caption(('실제 패널·이음새 치수 비율' if display_mode=='실제 치수 비율' else '이음새를 확대해 강조') + ' · 음소거 자동 반복 재생 · 단일 연속 영상을 2×2로 분할')
+        st.info('동영상은 하나의 연속 영상 위에 2×2 이음새를 겹쳐 보여줍니다. 실제 치수 비율에서는 이음새가 매우 가늘어 거의 보이지 않을 수 있으니 "이음새 확대"로 비교해 보세요. (소리 없음)')
+    else:
+        st.image(image,caption=('실제 패널·이음새 치수 비율' if display_mode=='실제 치수 비율' else '이음새를 확대해 강조한 비교 화면') + ' · 4개 영역 모두 단일 원본 이미지 기반',use_container_width=True)
+        st.info('컬러 패턴은 하나의 원본 이미지를 2×2로 분할한 연속 콘텐츠입니다. 이음새 OFF와 ON을 비교해 보세요.')
+        mem=io.BytesIO();image.save(mem,format='PNG')
+        st.download_button('현재 화면 PNG 저장',data=mem.getvalue(),file_name='smartwall_seam_preview.png',mime='image/png')
 with details:
     st.subheader('계산 결과')
     st.metric('전체 이음새 폭',f'{seam:.2f} mm',help='베젤 두 개 + 기구적 간격')
@@ -162,26 +173,6 @@ comparison=pd.DataFrame([
 ])
 st.dataframe(comparison,hide_index=True,use_container_width=True)
 st.download_button('비교 결과 CSV 다운로드',data=comparison.to_csv(index=False).encode('utf-8-sig'),file_name='smartwall_seam_metrics.csv',mime='text/csv')
-
-st.divider()
-st.subheader('동영상으로 이음새 보기 (베타)')
-st.caption('짧은 영상을 올리면 각 프레임에 현재 사이드바 설정(이음새/배율/표시)을 그대로 적용해 4분할 벽면 영상으로 보여줍니다.')
-up=st.file_uploader('동영상 업로드 (mp4·mov·webm, 처음 6초·최대 약 50MB 권장)',type=['mp4','mov','webm','m4v'])
-if up is not None:
-    if up.size>60*1024*1024:
-        st.warning('파일이 너무 큽니다(60MB 초과). 더 짧거나 작은 영상을 올려 주세요.')
-    elif st.button('이 설정으로 영상 생성', type='primary'):
-        with st.spinner('프레임마다 이음새를 적용하는 중… (영상 길이에 따라 수십 초 걸릴 수 있습니다)'):
-            try:
-                data,used,fps=process_video(up.getvalue(),w,h,seam,display_mode,show_seam)
-                st.video(data)
-                st.success(f'처리 완료 · {used} 프레임 (약 {used/fps:.1f}초), 원본 fps {fps:.0f} 기준')
-                st.download_button('처리된 영상 다운로드',data=data,file_name='smartwall_seam_video.mp4',mime='video/mp4')
-                st.caption('오디오는 제외됩니다. 실제 치수 비율에서는 이음새가 서브픽셀이라 영상에서도 거의 보이지 않을 수 있습니다 — 이음새 확대 모드로 비교해 보세요.')
-            except Exception as e:
-                st.error('영상 처리에 실패했습니다. 다른 형식(mp4 권장)이나 더 짧은 영상으로 다시 시도해 주세요.')
-                st.caption(f'상세: {type(e).__name__}: {e}')
-
 with st.expander('계산식·적용 범위·해석상 주의사항'):
     st.latex(r'W = D\times 25.4\times \frac{16}{\sqrt{16^2+9^2}}')
     st.latex(r'S = 2B + G')
@@ -191,4 +182,4 @@ with st.expander('계산식·적용 범위·해석상 주의사항'):
     st.warning('실제 비율 화면은 모니터 해상도에서 서브픽셀 두께가 되어 거의 보이지 않을 수 있습니다. 이것이 실제 시청 환경에서 이음새가 보이지 않는다는 뜻은 아닙니다. 1분각 역시 시인성 합격/불합격의 절대 기준이 아닙니다.')
     st.write('모듈의 베젤은 내부 비발광 가장자리를 뜻하며, 네 모듈에 동일한 값으로 모델링했습니다. 모든 화면 크기는 활성 화면(16:9) 기준입니다. 봉지 여백, 반사율, 밝기, 색 편차, 단차, 관측각과 실제 롤러블 구조는 반영되지 않았습니다. 55/65/77형 4K 롤러블 모듈의 상용 공급 가능성을 뜻하지 않습니다.')
     st.write('모든 베젤/간격 입력값은 사용자가 정하는 설계 가정입니다. 실제 측정값이 아닙니다.')
-    st.caption('연속 이미지 4종(풍경·거실·도시 야경·추상)은 Unsplash 무료 라이선스 사진입니다.')
+    st.caption('연속 이미지 4종은 Unsplash 무료 라이선스 사진, 연속 영상 4종은 Mixkit 무료 라이선스 영상입니다.')
