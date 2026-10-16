@@ -35,7 +35,7 @@ with st.sidebar:
     if pattern=='컬러(연속 이미지)':
         subject=st.selectbox('연속 이미지 종류',['풍경','거실 인테리어','도시 야경','추상 패턴'])
     elif pattern=='동영상(연속 영상)':
-        video_key=st.selectbox('연속 영상 종류',['산 풍경 타임랩스','바다 일몰','도시 야경','밤하늘·호수'])
+        video_key=st.selectbox('연속 영상 종류',['산 풍경 타임랩스','밤하늘·호수'])
         video_speed=st.select_slider('재생 속도',options=[0.25,0.5,0.75,1.0],value=0.5,
                                      help='타임랩스가 빠르게 느껴지면 배속을 낮추세요.')
     display_mode=st.radio('이음새 표시 배율',['실제 치수 비율','이음새 확대'],horizontal=True)
@@ -101,8 +101,7 @@ def render_wall(image, panel_w, panel_h, s, mode, visible, out_w=1600):
     return scene.resize((out_w,round(out_w*9/16)),Image.Resampling.LANCZOS)
 
 
-VIDEO_FILES={'산 풍경 타임랩스':'vid_mountain.mp4','바다 일몰':'vid_sea.mp4',
-             '도시 야경':'vid_citynight.mp4','밤하늘·호수':'vid_nightsky.mp4'}
+VIDEO_FILES={'산 풍경 타임랩스':'vid_mountain.mp4','밤하늘·호수':'vid_nightsky.mp4'}
 
 @st.cache_data(show_spinner=False)
 def video_data_uri(filename):
@@ -115,7 +114,8 @@ def seam_wall_html(filename, panel_w, s, mode, visible, speed=0.5):
     Real: seam width is the true physical fraction of the wall. Zoom: exaggerated so it is clearly visible.
     """
     true_frac=s/(2*panel_w+s)
-    frac=true_frac if mode=='실제 치수 비율' else min(0.06, 0.004+s*0.012)
+    # Zoom keeps the real seam proportion but magnified ~60x so bezel, gap AND panel size all show.
+    frac=true_frac if mode=='실제 치수 비율' else min(0.08, true_frac*60)
     lines=''
     if visible and frac>0:
         vt=frac*100; ht=frac*(16/9)*100
@@ -189,4 +189,4 @@ with st.expander('계산식·적용 범위·해석상 주의사항'):
     st.warning('실제 비율 화면은 모니터 해상도에서 서브픽셀 두께가 되어 거의 보이지 않을 수 있습니다. 이것이 실제 시청 환경에서 이음새가 보이지 않는다는 뜻은 아닙니다. 1분각 역시 시인성 합격/불합격의 절대 기준이 아닙니다.')
     st.write('모듈의 베젤은 내부 비발광 가장자리를 뜻하며, 네 모듈에 동일한 값으로 모델링했습니다. 모든 화면 크기는 활성 화면(16:9) 기준입니다. 봉지 여백, 반사율, 밝기, 색 편차, 단차, 관측각과 실제 롤러블 구조는 반영되지 않았습니다. 55/65/77형 4K 롤러블 모듈의 상용 공급 가능성을 뜻하지 않습니다.')
     st.write('모든 베젤/간격 입력값은 사용자가 정하는 설계 가정입니다. 실제 측정값이 아닙니다.')
-    st.caption('연속 이미지 4종은 Unsplash 무료 라이선스 사진, 연속 영상 4종은 Mixkit 무료 라이선스 영상입니다.')
+    st.caption('연속 이미지 4종은 Unsplash 무료 라이선스 사진, 연속 영상 2종은 Mixkit 무료 라이선스 영상입니다.')
