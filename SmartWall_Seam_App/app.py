@@ -115,17 +115,20 @@ def image_data_uri(filename):
     return 'data:image/jpeg;base64,'+base64.b64encode(buf.getvalue()).decode('ascii')
 
 
-PLANT=('<svg class="plant" viewBox="0 0 60 92" preserveAspectRatio="xMidYMax meet">'
-       '<path d="M30 58 C9 42 5 20 15 5 C21 20 25 32 30 44 C35 26 41 14 55 7 C51 29 44 46 32 58 Z" fill="#223a2d"/>'
-       '<path d="M30 58 C24 48 20 40 19 30 C26 38 29 48 30 58 Z" fill="#2c4a39"/>'
-       '<rect x="20" y="57" width="20" height="30" rx="4" fill="#191410"/>'
-       '</svg>')
+@st.cache_data(show_spinner=False)
+def room_data_uri():
+    data=(BASE/'assets'/'room.webp').read_bytes()
+    return 'data:image/webp;base64,'+base64.b64encode(data).decode('ascii')
+
+# Display quad corners in the room photo, as fractions of the cropped room region (TL,TR,BR,BL).
+ROOM_AR_W=860.0; ROOM_AR_H=518.0   # cropped room region (spec bar removed)
+SCREEN_CORNERS=[[0.1477,0.0637],[0.7349,0.1351],[0.7349,0.7278],[0.1477,0.7587]]
 
 
-def room_html(kind, uri, color, frac, wmeter, hmeter, visible, speed=0.5):
-    """Showroom composite: the 2×2 wall mounted on a living-room back wall, viewed head-on.
-    The screen is centered; the room fills around it. Content (white/photo/video) sits in the
-    screen with a true-scale 2×2 seam (sub-pixel seam = 1px at reduced opacity, same as faithful)."""
+def room_html(kind, uri, color, frac, visible, speed=0.5):
+    """Photo-real showroom: the shared living-room render is the backdrop, and the live content
+    (white/photo/video + true-scale 2×2 seam) is perspective-warped (CSS matrix3d homography)
+    onto the display's quad so it sits exactly where the panel is in the photo."""
     vis='true' if (visible and frac>0) else 'false'
     if kind=='video':
         media=f'<video id="m" src="{uri}" autoplay muted loop playsinline></video>'
@@ -133,56 +136,39 @@ def room_html(kind, uri, color, frac, wmeter, hmeter, visible, speed=0.5):
         media=f'<img id="m" src="{uri}">'
     else:
         media=''
+    bg=room_data_uri()
     css=('html,body{margin:0;background:transparent}*{box-sizing:border-box}'
-         '.scene{position:relative;width:100%;max-width:1040px;margin:0 auto;aspect-ratio:16/10;'
-         'border-radius:14px;overflow:hidden;border:1px solid #2a2622;'
-         'background:linear-gradient(180deg,#2c2821 0%,#272218 55%,#1b1712 100%)}'
-         '.wallglow{position:absolute;left:50%;top:-12%;width:78%;height:72%;transform:translateX(-50%);'
-         'background:radial-gradient(closest-side,rgba(255,208,150,.12),transparent 70%);pointer-events:none}'
-         '.light{position:absolute;top:3%;width:6px;height:6px;border-radius:50%;background:#ffe9c7;'
-         'box-shadow:0 0 16px 7px rgba(255,205,140,.4)}'
-         '.frame{position:absolute;top:21%;width:7%;aspect-ratio:3/4;border:2px solid #0f0d0a;'
-         'border-radius:3px;background:#2f4a60;box-shadow:0 6px 16px rgba(0,0,0,.45)}'
-         '.plant{position:absolute;bottom:19%;width:6.5%;filter:drop-shadow(0 8px 10px rgba(0,0,0,.5))}'
-         '.floor{position:absolute;left:0;right:0;bottom:0;height:20%;'
-         'background:linear-gradient(180deg,#151109,#0b0805);border-top:1px solid rgba(255,255,255,.05);'
-         'box-shadow:inset 0 26px 40px rgba(0,0,0,.55)}'
-         '.rug{position:absolute;left:50%;transform:translateX(-50%);bottom:4%;width:46%;height:9%;'
-         'background:radial-gradient(closest-side,rgba(255,235,205,.06),transparent 72%);border-radius:50%}'
-         '.stand{position:absolute;left:50%;top:9%;transform:translateX(-50%);width:62%}'
-         '.screen{position:relative;width:100%;aspect-ratio:16/9;background:'+color+';'
-         'border:5px solid #0a0a0b;border-radius:4px;overflow:hidden;'
-         'box-shadow:0 0 80px 10px rgba(120,150,210,.18),0 24px 54px rgba(0,0,0,.6)}'
+         '.scene{position:relative;width:100%;max-width:1020px;margin:0 auto;aspect-ratio:'+f'{ROOM_AR_W}/{ROOM_AR_H}'+';'
+         'border-radius:12px;overflow:hidden;border:1px solid #2a2622;'
+         "background-image:url('"+bg+"');background-size:100% auto;background-position:top left;background-repeat:no-repeat}"
+         '#warp{position:absolute;left:0;top:0;width:1000px;height:562px;transform-origin:0 0;background:'+color+'}'
          '#m{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}'
-         '.seam{position:absolute;background:#0a0c0f;display:none}'
-         '.dim{width:100%;text-align:center;color:#d3c0a2;font:600 12px system-ui,sans-serif;'
-         'margin-top:9px;border-top:1px solid rgba(211,192,162,.45);padding-top:5px}')
+         '.seam{position:absolute;background:#0a0c0f;display:none}')
     return (
         '<!doctype html><html><head><meta charset="utf-8"><style>'+css+'</style></head><body>'
-        '<div class="scene">'
-        '<div class="wallglow"></div>'
-        '<div class="light" style="left:32%"></div><div class="light" style="left:50%"></div><div class="light" style="left:68%"></div>'
-        '<div class="frame" style="left:4%"></div><div class="frame" style="right:4%"></div>'
-        '<div class="floor"></div><div class="rug"></div>'
-        '<div class="plant" style="left:2.5%">'+PLANT+'</div>'
-        '<div class="plant" style="right:2.5%">'+PLANT+'</div>'
-        '<div class="stand"><div class="screen">'+media+
+        '<div class="scene"><div id="warp">'+media+
         '<div id="vseam" class="seam" style="left:50%;top:0;height:100%;transform:translateX(-50%)"></div>'
         '<div id="hseam" class="seam" style="top:50%;left:0;width:100%;transform:translateY(-50%)"></div>'
-        '</div>'
-        f'<div class="dim">{wmeter:.2f} m × {hmeter:.2f} m</div>'
         '</div></div>'
         '<script>(function(){'
-        'var screen=document.querySelector(".screen"),m=document.getElementById("m");'
+        'var scene=document.querySelector(".scene"),warp=document.getElementById("warp"),m=document.getElementById("m");'
         'var vs=document.getElementById("vseam"),hs=document.getElementById("hseam");'
-        f'var frac={frac:.8f},vis={vis},speed={speed};'
-        'if(m&&m.tagName==="VIDEO"){var sp=function(){try{m.playbackRate=speed;}catch(e){}};'
-        'm.addEventListener("loadedmetadata",sp);m.addEventListener("play",sp);sp();}'
-        'function layout(){if(!vis){vs.style.display="none";hs.style.display="none";return;}'
-        'var W=screen.clientWidth,t=frac*W,op=1;if(t<1){op=t;t=1;}'
-        'vs.style.display="block";hs.style.display="block";'
-        'vs.style.width=t+"px";vs.style.opacity=op;hs.style.height=t+"px";hs.style.opacity=op;}'
-        'window.addEventListener("resize",layout);layout();setTimeout(layout,200);'
+        f'var frac={frac:.8f},vis={vis},speed={speed},Wc=1000,Hc=562;'
+        'var C='+repr(SCREEN_CORNERS).replace(' ','')+';'
+        'function adj(x){return[x[4]*x[8]-x[5]*x[7],x[2]*x[7]-x[1]*x[8],x[1]*x[5]-x[2]*x[4],x[5]*x[6]-x[3]*x[8],x[0]*x[8]-x[2]*x[6],x[2]*x[3]-x[0]*x[5],x[3]*x[7]-x[4]*x[6],x[1]*x[6]-x[0]*x[7],x[0]*x[4]-x[1]*x[3]];}'
+        'function mm(a,b){var c=[],i,j,k,s;for(i=0;i<3;i++)for(j=0;j<3;j++){s=0;for(k=0;k<3;k++)s+=a[3*i+k]*b[3*k+j];c[3*i+j]=s;}return c;}'
+        'function mv(x,v){return[x[0]*v[0]+x[1]*v[1]+x[2]*v[2],x[3]*v[0]+x[4]*v[1]+x[5]*v[2],x[6]*v[0]+x[7]*v[1]+x[8]*v[2]];}'
+        'function basis(p){var m=[p[0][0],p[1][0],p[2][0],p[0][1],p[1][1],p[2][1],1,1,1];var v=mv(adj(m),[p[3][0],p[3][1],1]);return mm(m,[v[0],0,0,0,v[1],0,0,0,v[2]]);}'
+        'if(m&&m.tagName==="VIDEO"){var sp=function(){try{m.playbackRate=speed;}catch(e){}};m.addEventListener("loadedmetadata",sp);m.addEventListener("play",sp);sp();}'
+        'function layout(){var W=scene.clientWidth,H=scene.clientHeight;'
+        'var d=[[C[0][0]*W,C[0][1]*H],[C[1][0]*W,C[1][1]*H],[C[2][0]*W,C[2][1]*H],[C[3][0]*W,C[3][1]*H]];'
+        'var s=[[0,0],[Wc,0],[Wc,Hc],[0,Hc]];var t=mm(basis(d),adj(basis(s)));'
+        'for(var i=0;i<9;i++)t[i]=t[i]/t[8];'
+        'warp.style.transform="matrix3d("+[t[0],t[3],0,t[6],t[1],t[4],0,t[7],0,0,1,0,t[2],t[5],0,t[8]].join(",")+")";'
+        'if(!vis){vs.style.display="none";hs.style.display="none";return;}'
+        'var tk=frac*Wc,op=1;if(tk<1){op=tk;tk=1;}'
+        'vs.style.display="block";hs.style.display="block";vs.style.width=tk+"px";vs.style.opacity=op;hs.style.height=tk+"px";hs.style.opacity=op;}'
+        'window.addEventListener("resize",layout);layout();setTimeout(layout,150);setTimeout(layout,500);'
         '})();</script></body></html>')
 
 
@@ -194,8 +180,8 @@ else:
     disp_kind,disp_uri,disp_color='image',image_data_uri(IMAGE_FILES[subject]),'#0a0c0f'
 
 st.markdown('<div class="sec">실제 공간 미리보기 · 쇼룸</div>', unsafe_allow_html=True)
-components.html(room_html(disp_kind,disp_uri,disp_color,wall_frac,wall_w_m,wall_h_m,show_seam,video_speed),height=690)
-st.markdown('<p class="cap">거실 벽면에 4모듈 월 디스플레이를 설치한 정면 뷰입니다. 가운데 화면에 현재 패턴(흰색·사진·동영상)과 2×2 이음새가 실제 치수 비율로 합성됩니다. 실제 치수 비율에서 이음새는 전체 벽 폭의 약 0.03% 수준이라 거의 보이지 않는 것이 정상입니다.</p>', unsafe_allow_html=True)
+components.html(room_html(disp_kind,disp_uri,disp_color,wall_frac,show_seam,video_speed),height=650)
+st.markdown('<p class="cap">거실에 4모듈 월 디스플레이를 설치한 모습입니다. 디스플레이 영역에 현재 패턴(흰색·사진·동영상)과 2×2 이음새가 실제 치수 비율로 합성됩니다. 실제 치수 비율에서 이음새는 전체 벽 폭의 약 0.03% 수준이라 거의 보이지 않는 것이 정상입니다.</p>', unsafe_allow_html=True)
 
 m1,m2,m3,m4=st.columns(4)
 m1.metric('이음새 폭',f'{seam:.2f} mm',help='베젤 두 개 + 기구적 간격')
@@ -239,4 +225,4 @@ with st.expander('계산식 · 적용 범위 · 해석상 주의사항'):
     st.warning('실제 비율 화면은 모니터 해상도에서 서브픽셀 두께가 되어 거의 보이지 않을 수 있습니다. 이것이 실제 시청 환경에서 이음새가 보이지 않는다는 뜻은 아닙니다. 1분각 역시 시인성 합격/불합격의 절대 기준이 아닙니다.')
     st.write('모듈의 베젤은 내부 비발광 가장자리를 뜻하며, 네 모듈에 동일한 값으로 모델링했습니다. 모든 화면 크기는 활성 화면(16:9) 기준입니다. 봉지 여백, 반사율, 밝기, 색 편차, 단차, 관측각과 실제 롤러블 구조는 반영되지 않았습니다. 55/65/77형 4K 롤러블 모듈의 상용 공급 가능성을 뜻하지 않습니다.')
     st.write('모든 베젤/간격 입력값은 사용자가 정하는 설계 가정입니다. 실제 측정값이 아닙니다.')
-    st.caption('연속 이미지 4종은 Unsplash 무료 라이선스 사진, 연속 영상 2종은 Mixkit 무료 라이선스 영상입니다. 쇼룸 배경은 CSS로 그린 연출이며 실제 설치 사진이 아닙니다.')
+    st.caption('연속 이미지 4종은 Unsplash 무료 라이선스 사진, 연속 영상 2종은 Mixkit 무료 라이선스 영상입니다. 쇼룸 배경은 제공된 콘셉트 렌더 이미지이며 실제 설치 사진이 아닙니다.')
