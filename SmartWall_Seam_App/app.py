@@ -136,55 +136,6 @@ def video_data_uri(filename):
     return 'data:video/mp4;base64,'+base64.b64encode(data).decode('ascii')
 
 
-@st.cache_data(show_spinner=False)
-def image_data_uri(subject):
-    img=load_scene('컬러(연속 이미지)',subject)
-    buf=io.BytesIO(); img.save(buf,format='JPEG',quality=86)
-    return 'data:image/jpeg;base64,'+base64.b64encode(buf.getvalue()).decode('ascii')
-
-
-def retina_html(kind, uri, color, zoom, seam_frac, blur_frac, visible, speed=0.5):
-    """Close-up of the panel junction at retinal scale. Distance is modeled as the eye's
-    acuity blur (a ~1 arcmin spot projected onto the wall grows with distance), so the seam
-    softens and melts away as viewing distance increases — no camera move, no perspective shift.
-    """
-    vis='true' if (visible and seam_frac>0) else 'false'
-    if kind=='video':
-        media=f'<video id="m" src="{uri}" autoplay muted loop playsinline></video>'
-    elif kind=='image':
-        media=f'<img id="m" src="{uri}">'
-    else:
-        media=''
-    return (
-        '<!doctype html><html><head><meta charset="utf-8"><style>'
-        'html,body{margin:0;background:transparent}'
-        '.wrap{position:relative;width:100%;max-width:760px;margin:0 auto;aspect-ratio:16/9;'
-        f'background:{color};border-radius:12px;overflow:hidden;border:1px solid #273142;'
-        'box-shadow:0 14px 34px rgba(0,0,0,.5)}'
-        '.view{position:absolute;inset:0;will-change:filter}'
-        '#m{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform-origin:center center}'
-        '.seam{position:absolute;background:#0a0c0f;display:none}'
-        '</style></head><body><div class="wrap"><div class="view" id="view">'
-        f'{media}'
-        '<div id="vseam" class="seam" style="left:50%;top:0;height:100%;transform:translateX(-50%)"></div>'
-        '<div id="hseam" class="seam" style="top:50%;left:0;width:100%;transform:translateY(-50%)"></div>'
-        '</div></div>'
-        '<script>(function(){'
-        'var view=document.getElementById("view"),wrap=document.querySelector(".wrap"),m=document.getElementById("m");'
-        'var vs=document.getElementById("vseam"),hs=document.getElementById("hseam");'
-        f'var zoom={zoom:.4f},sfrac={seam_frac:.6f},bfrac={blur_frac:.6f},vis={vis},speed={speed};'
-        'if(m&&m.tagName==="VIDEO"){var sp=function(){try{m.playbackRate=speed;}catch(e){}};'
-        'm.addEventListener("loadedmetadata",sp);m.addEventListener("play",sp);sp();}'
-        'if(m){m.style.transform="scale("+zoom+")";}'
-        'function layout(){var W=wrap.clientWidth;view.style.filter="blur("+(bfrac*W).toFixed(2)+"px)";'
-        'if(!vis){vs.style.display="none";hs.style.display="none";return;}'
-        'var t=Math.max(1,sfrac*W);vs.style.display="block";hs.style.display="block";'
-        'vs.style.width=t+"px";hs.style.height=t+"px";}'
-        'window.addEventListener("resize",layout);layout();setTimeout(layout,200);'
-        '})();</script>'
-        '</body></html>')
-
-
 def seam_wall_html(filename, frac, visible, speed=0.5):
     """Play one continuous clip with a true-scale 2×2 seam overlaid (no re-encoding).
     JS measures the real player width and draws the seam at exactly `frac` of it, matching the
@@ -258,42 +209,6 @@ with details:
     else:
         st.markdown('<div class="status off">! 팀 PPT의 잠정 목표 2.0 ± 0.5 mm 범위 밖</div>', unsafe_allow_html=True)
     st.markdown('<p class="cap">사전 설계 목표와의 비교이며 실제 품질 합격 판정이 아닙니다. 시청 거리는 시야각(분각)에만 영향을 주고, 화면에 그려지는 이음새 비율은 바꾸지 않습니다.</p>', unsafe_allow_html=True)
-
-st.divider()
-st.markdown('<div class="sec">거리 체감 · 눈이 지각하는 이음새 (접합부 확대)</div>', unsafe_allow_html=True)
-ACUITY=1.0  # arcmin, 20/20 기준
-P_MM=200.0  # 확대해 보여줄 접합부 패치의 실제 폭(mm)
-W_wall=2*w+seam
-zoom=W_wall/P_MM
-seam_frac_patch=seam/P_MM
-sigma_mm=dist*1000.0*(ACUITY/3438.0)   # 시력 1′ 스폿이 벽에 투영된 폭 — 거리에 비례해 커짐
-blur_frac=sigma_mm/P_MM
-theta=(seam/(dist*1000.0))*3438.0      # 이음새 각크기(분각)
-if theta < ACUITY:
-    verdict,vclass='✓ 사실상 안 보임 — 이음새 없는 한 화면처럼 지각','ok'
-elif theta < 2*ACUITY:
-    verdict,vclass='◐ 경계 — 희미하게 인지되는 수준','off'
-else:
-    verdict,vclass='● 뚜렷 — 가까워서 이음새가 인지됨','off'
-if pattern=='흰색':
-    rkind,ruri,rcolor='white','','#f0f0f0'
-elif is_video:
-    rkind,ruri,rcolor='video',video_data_uri(VIDEO_FILES[video_key]),'#0a0c0f'
-else:
-    rkind,ruri,rcolor='image',image_data_uri(subject),'#0a0c0f'
-rc1,rc2=st.columns([1.5,1],gap='large')
-with rc1:
-    components.html(retina_html(rkind,ruri,rcolor,zoom,seam_frac_patch,blur_frac,show_seam,video_speed),height=445)
-    st.markdown('<p class="cap">접합부를 확대한 정면 뷰입니다. 사이드바의 <b>시청 거리</b>를 움직이면 눈의 분해능(≈1′)만큼 화면이 흐려져, 멀어질수록 이음새가 지각 한계 이하로 녹아 사라집니다. 원근·시점 변화 없음.</p>', unsafe_allow_html=True)
-with rc2:
-    st.markdown(f'''<div class="panel">
-<div class="row"><span>이음새 각크기 ({dist:g} m)</span><b>{theta:.2f}′</b></div>
-<div class="row"><span>눈의 분해능 한계</span><b>{ACUITY:.1f}′ · 20/20</b></div>
-<div class="row"><span>접합부 확대 배율</span><b>약 {zoom:.0f}×</b></div>
-<div class="row"><span>지각 블러 폭 (벽 기준)</span><b>{sigma_mm:.2f} mm</b></div>
-</div>''', unsafe_allow_html=True)
-    st.markdown(f'<div class="status {vclass}">{verdict}</div>', unsafe_allow_html=True)
-    st.markdown('<p class="cap">각크기가 분해능(1′)보다 작아지면 사람 눈은 이음새를 더 이상 구분하지 못합니다.</p>', unsafe_allow_html=True)
 
 st.divider()
 st.markdown('<div class="sec">설계안 비교 · 현재 조건과 1mm 이음새</div>', unsafe_allow_html=True)
