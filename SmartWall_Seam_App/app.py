@@ -115,8 +115,8 @@ def image_data_uri(filename):
     return 'data:image/jpeg;base64,'+base64.b64encode(buf.getvalue()).decode('ascii')
 
 
-@st.cache_data(show_spinner=False)
 def room_data_uri():
+    # Not cached: the backdrop file may be swapped, and an arg-less cache would pin a stale image.
     data=(BASE/'assets'/'room.webp').read_bytes()
     return 'data:image/webp;base64,'+base64.b64encode(data).decode('ascii')
 
