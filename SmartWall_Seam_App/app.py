@@ -31,11 +31,13 @@ with st.sidebar:
     gap=st.slider('패널 사이 기구적 간격 (mm)',0.0,3.0,0.2,0.05)
     dist=st.slider('시청 거리 (m)',1.0,6.0,3.0,0.5)
     pattern=st.radio('화면 패턴',['흰색','컬러(연속 이미지)','동영상(연속 영상)'],index=1)
-    subject=None; video_key=None
+    subject=None; video_key=None; video_speed=0.5
     if pattern=='컬러(연속 이미지)':
         subject=st.selectbox('연속 이미지 종류',['풍경','거실 인테리어','도시 야경','추상 패턴'])
     elif pattern=='동영상(연속 영상)':
         video_key=st.selectbox('연속 영상 종류',['산 풍경 타임랩스','바다 일몰','도시 야경','밤하늘·호수'])
+        video_speed=st.select_slider('재생 속도',options=[0.25,0.5,0.75,1.0],value=0.5,
+                                     help='타임랩스가 빠르게 느껴지면 배속을 낮추세요.')
     display_mode=st.radio('이음새 표시 배율',['실제 치수 비율','이음새 확대'],horizontal=True)
     show_seam=st.checkbox('이음새 표시',value=True,help='끄면 경계 없는 원본 상태와 비교합니다.')
     st.caption('해상도 선택 옵션 없음 — 개별 패널 4K 고정')
@@ -108,7 +110,7 @@ def video_data_uri(filename):
     return 'data:video/mp4;base64,'+base64.b64encode(data).decode('ascii')
 
 
-def seam_wall_html(filename, panel_w, s, mode, visible):
+def seam_wall_html(filename, panel_w, s, mode, visible, speed=0.5):
     """Play one continuous clip with a 2×2 seam cross overlaid, no re-encoding.
     Real: seam width is the true physical fraction of the wall. Zoom: exaggerated so it is clearly visible.
     """
@@ -128,6 +130,9 @@ def seam_wall_html(filename, panel_w, s, mode, visible):
             f'.seam{{position:absolute;background:#0a0c0f}}'
             f'</style></head><body><div class="wrap">'
             f'<video src="{uri}" autoplay muted loop playsinline controls></video>{lines}'
+            f'<script>(function(){{var v=document.querySelector("video");'
+            f'function s(){{try{{v.playbackRate={speed};}}catch(e){{}}}}'
+            f'v.addEventListener("loadedmetadata",s);v.addEventListener("play",s);s();}})();</script>'
             f'</div></body></html>')
 
 is_video=(pattern=='동영상(연속 영상)')
@@ -139,7 +144,7 @@ main,details=st.columns([1.85,1],gap='large')
 with main:
     st.subheader('4모듈 OLED 화면 구성')
     if is_video:
-        components.html(seam_wall_html(VIDEO_FILES[video_key],w,seam,display_mode,show_seam),height=440)
+        components.html(seam_wall_html(VIDEO_FILES[video_key],w,seam,display_mode,show_seam,video_speed),height=440)
         st.caption(('실제 패널·이음새 치수 비율' if display_mode=='실제 치수 비율' else '이음새를 확대해 강조') + ' · 음소거 자동 반복 재생 · 단일 연속 영상을 2×2로 분할')
         st.info('동영상은 하나의 연속 영상 위에 2×2 이음새를 겹쳐 보여줍니다. 실제 치수 비율에서는 이음새가 매우 가늘어 거의 보이지 않을 수 있으니 "이음새 확대"로 비교해 보세요. (소리 없음)')
     else:
@@ -155,7 +160,8 @@ with details:
     c1.metric('픽셀 환산 폭',f'{seam/pitch:.2f} px')
     c2.metric('4K 픽셀 피치',f'{pitch:.3f} mm')
     st.write(f'**패널 1장 활성 화면:** {w:,.1f} × {h:,.1f} mm')
-    st.write(f'**화면 너비 대비 이음새:** {100*seam/w:.4f}%')
+    st.write(f'**단일 패널 폭 대비 이음새:** {100*seam/w:.4f}%')
+    st.write(f'**전체 벽 폭 대비(화면 렌더 비율):** {100*seam/(2*w+seam):.4f}% · 화면 1000px당 약 {seam/(2*w+seam)*1000:.2f}px')
     st.write(f'**{dist:g}m에서 1분각 길이:** {arc_one:.2f} mm')
     st.markdown('**이음새 구성**')
     st.write(f'{bezel:.2f} (좌 베젤) + {gap:.2f} (기구 간격) + {bezel:.2f} (우 베젤) = **{seam:.2f} mm**')
@@ -164,6 +170,7 @@ with details:
     else:
         st.warning('팀 PPT의 잠정 목표 2.0 ± 0.5 mm 범위 밖')
     st.caption('이 비교는 사전 설계 목표와의 비교이며, 실제 품질 합격 판정이 아닙니다.')
+    st.caption('시청 거리는 시야각(분각) 계산에만 영향을 주며, 화면에 그려지는 이음새 비율은 바꾸지 않습니다. 실제 치수 비율에서 이음새는 전체 벽 폭의 약 0.03% 수준이라 서브픽셀로 거의 보이지 않는 것이 정상입니다 — "이음새 확대"로 비교하세요.')
 
 st.divider()
 st.subheader('설계안 비교: 현재 조건과 1mm 이음새')
