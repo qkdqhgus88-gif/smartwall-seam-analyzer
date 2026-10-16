@@ -10,26 +10,75 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
-from PIL import Image, ImageDraw
+from PIL import Image
 
 BASE = Path(__file__).resolve().parent
 st.set_page_config(page_title='Smart Wall | Seam Analyzer', page_icon='📺', layout='wide')
+
 st.markdown('''<style>
-.block-container {padding-top: 1.8rem; max-width: 1220px;}
-[data-testid="stMetricValue"] {font-size: 1.8rem;}
-.subtle {color:#768493;font-size:0.85rem;}
-.note {padding: 0.8rem 1rem; border: 1px solid #c9d7e4; border-radius: .65rem;}
+:root{
+  --bg:#0b0e14; --panel:#141925; --panel2:#1b2130; --line:#273142;
+  --text:#e6edf3; --muted:#9aa7b8; --accent:#38bdf8; --accent2:#7c5cff;
+}
+#MainMenu{visibility:hidden;}
+footer{visibility:hidden;}
+header[data-testid="stHeader"]{background:transparent;}
+.block-container{padding-top:1.1rem;max-width:1260px;}
+.hero{
+  background:linear-gradient(135deg,#131a2a 0%,#0e1320 55%,#0b0e14 100%);
+  border:1px solid var(--line);border-radius:18px;padding:24px 30px;margin-bottom:18px;
+  position:relative;overflow:hidden;
+}
+.hero:before{content:"";position:absolute;right:-70px;top:-70px;width:240px;height:240px;
+  background:radial-gradient(circle,rgba(56,189,248,.22),transparent 70%);}
+.hero:after{content:"";position:absolute;left:35%;bottom:-90px;width:260px;height:180px;
+  background:radial-gradient(circle,rgba(124,92,255,.16),transparent 70%);}
+.hero .badge{display:inline-block;font-size:.70rem;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--accent);border:1px solid rgba(56,189,248,.4);border-radius:999px;padding:3px 12px;margin-bottom:12px;}
+.hero h1{margin:0;font-size:2.15rem;font-weight:800;letter-spacing:-.01em;color:#fff;line-height:1.08;}
+.hero h1 span{background:linear-gradient(90deg,var(--accent),var(--accent2));
+  -webkit-background-clip:text;background-clip:text;color:transparent;}
+.hero p{margin:.55rem 0 0;color:var(--muted);max-width:760px;font-size:.96rem;line-height:1.5;}
+.hero .chips{margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;}
+.hero .chips span{font-size:.76rem;color:var(--text);background:var(--panel2);
+  border:1px solid var(--line);border-radius:8px;padding:4px 11px;}
+.sec{font-size:1.02rem;font-weight:700;color:#fff;margin:2px 0 12px;
+  padding-left:12px;border-left:3px solid var(--accent);}
+[data-testid="stMetric"]{background:var(--panel);border:1px solid var(--line);
+  border-radius:14px;padding:13px 16px;}
+[data-testid="stMetricValue"]{font-size:1.5rem;color:#fff;}
+[data-testid="stMetricLabel"]{color:var(--muted);}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;
+  padding:6px 16px;margin-top:14px;}
+.panel .row{display:flex;justify-content:space-between;gap:12px;padding:9px 0;
+  border-bottom:1px dashed var(--line);font-size:.88rem;color:var(--muted);}
+.panel .row:last-child{border-bottom:none;}
+.panel .row b{color:var(--text);font-weight:600;text-align:right;}
+.status{border-radius:12px;padding:12px 16px;margin-top:14px;font-size:.9rem;font-weight:600;border:1px solid;}
+.status.ok{background:rgba(34,197,94,.10);border-color:rgba(34,197,94,.45);color:#8ef0b0;}
+.status.off{background:rgba(245,158,11,.10);border-color:rgba(245,158,11,.45);color:#f4c87a;}
+[data-testid="stImage"] img{border-radius:12px;border:1px solid var(--line);
+  box-shadow:0 14px 34px rgba(0,0,0,.5);}
+[data-testid="stSidebar"]{background:#0d121c;border-right:1px solid var(--line);}
+.stDownloadButton button,.stButton button{border-radius:10px;}
+.cap{color:var(--muted);font-size:.82rem;line-height:1.5;}
 </style>''', unsafe_allow_html=True)
-st.title('Smart Wall · Seam Visibility Analyzer')
-st.caption('4개 16:9 OLED 모듈 (2×2) | 모듈별 4K UHD 3840×2160 고정 | 설계 검토용 시뮬레이션')
+
+st.markdown('''<div class="hero">
+  <span class="badge">OLED · 2×2 Modular Wall</span>
+  <h1>Smart Wall <span>Seam Analyzer</span></h1>
+  <p>16:9 OLED 모듈 4장을 이어 붙인 월 디스플레이의 이음새 시인성을 설계 파라미터(베젤·기구 간격·패널 크기·시청 거리)로 시뮬레이션합니다.</p>
+  <div class="chips"><span>모듈별 4K UHD · 3840×2160</span><span>16:9 · 2×2</span><span>설계 검토용 시뮬레이션</span></div>
+</div>''', unsafe_allow_html=True)
 
 with st.sidebar:
-    st.header('설계 입력')
+    st.markdown('<div class="sec">설계 입력</div>', unsafe_allow_html=True)
     diag=st.radio('개별 OLED 크기', [55,65,77], index=1, horizontal=True, format_func=lambda x:f'{x}형')
     bezel=st.slider('각 패널의 내부 베젤 폭 (mm)',0.0,3.0,0.3,0.05,
                     help='네 패널의 가로·세로 내부 경계에 동일한 베젤 폭을 가정합니다.')
     gap=st.slider('패널 사이 기구적 간격 (mm)',0.0,3.0,0.2,0.05)
     dist=st.slider('시청 거리 (m)',1.0,6.0,3.0,0.5)
+    st.divider()
     pattern=st.radio('화면 패턴',['흰색','컬러(연속 이미지)','동영상(연속 영상)'],index=1)
     subject=None; video_key=None; video_speed=0.5
     if pattern=='컬러(연속 이미지)':
@@ -38,7 +87,6 @@ with st.sidebar:
         video_key=st.selectbox('연속 영상 종류',['산 풍경 타임랩스','밤하늘·호수'])
         video_speed=st.select_slider('재생 속도',options=[0.25,0.5,0.75,1.0],value=0.5,
                                      help='타임랩스가 빠르게 느껴지면 배속을 낮추세요.')
-    display_mode=st.radio('이음새 표시 배율',['실제 치수 비율','이음새 확대'],horizontal=True)
     show_seam=st.checkbox('이음새 표시',value=True,help='끄면 경계 없는 원본 상태와 비교합니다.')
     st.caption('해상도 선택 옵션 없음 — 개별 패널 4K 고정')
 
@@ -48,6 +96,8 @@ seam=bezel*2+gap
 pitch=w/3840
 angle=math.degrees(2*math.atan(seam/(2*dist*1000)))*60
 arc_one=2*dist*1000*math.tan(math.radians(1/60)/2)
+wall_frac=seam/(2*w+seam)  # seam as a fraction of the full 2-panel wall width (what gets drawn)
+
 
 @st.cache_data(show_spinner=False)
 def load_scene(pattern, subject):
@@ -57,40 +107,16 @@ def load_scene(pattern, subject):
     return Image.open(BASE/'assets'/name).convert('RGB')
 
 
-def render_wall(image, panel_w, panel_h, s, mode, visible, out_w=1600):
-    """Render four crops from ONE source image; do not restart image coordinates per quadrant.
-    Real: geometry is proportional to physical dimensions. Super-sampling helps subpixel seams.
-    Zoom: only the seam is exaggerated; not to scale.
+def render_wall(image, panel_w, s, visible, out_w=1600):
+    """One source image shown across the full 2-panel wall, with a true-scale 2×2 seam overlaid.
+    The seam covers a strip of width s/(2*panel_w+s) of the wall; fractional coverage keeps
+    sub-pixel seams physically faithful after downscale (no artificial thickening).
     """
-    # Use a wider high-resolution raster for true-scale antialiasing.
-    size=out_w
-    true_px=s/(2*panel_w+s)*size
-    line_px=true_px if mode=='실제 치수 비율' else max(4.0,s*12.0)
-    if not visible: line_px=0.0
-    if mode=='실제 치수 비율':
-        # limit huge memory footprint: raster is 2400x1350 and output is 1600x900
-        size=2400
-        line_px=(s/(2*panel_w+s)*size) if visible else 0.0
+    size=2400
+    line_px=(s/(2*panel_w+s)*size) if visible else 0.0
     out_h=round(size*9/16)
-    # Continuous base: each quadrant comes from one image. Preserve content continuity when overlay toggles.
     scene=image.resize((size,out_h),Image.Resampling.LANCZOS)
-    # For zoom mode, emulate splitting and separating the source quadrants while keeping continuity.
-    if mode=='이음새 확대' and visible and line_px>0:
-        px=int(round(line_px)); px=min(px,80)
-        left=(size-px)//2; right=size-px-left
-        top=(out_h-px)//2; bottom=out_h-px-top
-        srcw,srch=image.size
-        result=Image.new('RGB',(size,out_h),(10,12,15))
-        quadrants=[((0,0,srcw//2,srch//2),(0,0,left,top)),
-                   ((srcw//2,0,srcw,srch//2),(left+px,0,size,top)),
-                   ((0,srch//2,srcw//2,srch),(0,top+px,left,out_h)),
-                   ((srcw//2,srch//2,srcw,srch),(left+px,top+px,size,out_h))]
-        for src,dst in quadrants:
-            tile=image.crop(src).resize((dst[2]-dst[0],dst[3]-dst[1]),Image.Resampling.LANCZOS)
-            result.paste(tile,dst[:2])
-        return result
     if visible and line_px>0:
-        # fractional seam width: cover pixels by area proportion for a physically faithful downsample.
         arr=np.asarray(scene).astype(np.float32).copy()
         cx,cy=size/2,out_h/2
         coverage_x=np.clip(np.minimum(np.arange(size)+1,cx+line_px/2)-np.maximum(np.arange(size),cx-line_px/2),0,1)
@@ -103,84 +129,97 @@ def render_wall(image, panel_w, panel_h, s, mode, visible, out_w=1600):
 
 VIDEO_FILES={'산 풍경 타임랩스':'vid_mountain.mp4','밤하늘·호수':'vid_nightsky.mp4'}
 
+
 @st.cache_data(show_spinner=False)
 def video_data_uri(filename):
     data=(BASE/'assets'/filename).read_bytes()
     return 'data:video/mp4;base64,'+base64.b64encode(data).decode('ascii')
 
 
-def seam_wall_html(filename, panel_w, s, mode, visible, speed=0.5):
-    """Play one continuous clip with a 2×2 seam cross overlaid, no re-encoding.
-    Real: seam width is the true physical fraction of the wall. Zoom: exaggerated so it is clearly visible.
+def seam_wall_html(filename, frac, visible, speed=0.5):
+    """Play one continuous clip with a true-scale 2×2 seam overlaid (no re-encoding).
+    JS measures the real player width and draws the seam at exactly `frac` of it, matching the
+    image path: a sub-pixel seam becomes a 1px line at reduced opacity (same faithful appearance).
     """
-    true_frac=s/(2*panel_w+s)
-    # Zoom keeps the real seam proportion but magnified ~60x so bezel, gap AND panel size all show.
-    frac=true_frac if mode=='실제 치수 비율' else min(0.08, true_frac*60)
-    lines=''
-    if visible and frac>0:
-        vt=frac*100; ht=frac*(16/9)*100
-        lines=(f'<div class="seam" style="left:50%;top:0;height:100%;width:{vt:.4f}%;transform:translateX(-50%)"></div>'
-               f'<div class="seam" style="top:50%;left:0;width:100%;height:{ht:.4f}%;transform:translateY(-50%)"></div>')
     uri=video_data_uri(filename)
-    return (f'<!doctype html><html><head><meta charset="utf-8"><style>'
-            f'html,body{{margin:0;background:transparent}}'
-            f'.wrap{{position:relative;width:100%;max-width:760px;margin:0 auto;aspect-ratio:16/9;'
-            f'background:#0a0c0f;border-radius:6px;overflow:hidden}}'
-            f'video{{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}}'
-            f'.seam{{position:absolute;background:#0a0c0f}}'
-            f'</style></head><body><div class="wrap">'
-            f'<video src="{uri}" autoplay muted loop playsinline controls></video>{lines}'
-            f'<script>(function(){{var v=document.querySelector("video");'
-            f'function s(){{try{{v.playbackRate={speed};}}catch(e){{}}}}'
-            f'v.addEventListener("loadedmetadata",s);v.addEventListener("play",s);s();}})();</script>'
-            f'</div></body></html>')
+    vis='true' if (visible and frac>0) else 'false'
+    return (
+        '<!doctype html><html><head><meta charset="utf-8"><style>'
+        'html,body{margin:0;background:transparent}'
+        '.wrap{position:relative;width:100%;max-width:820px;margin:0 auto;aspect-ratio:16/9;'
+        'background:#0a0c0f;border-radius:12px;overflow:hidden;border:1px solid #273142;'
+        'box-shadow:0 14px 34px rgba(0,0,0,.5)}'
+        'video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}'
+        '.seam{position:absolute;background:#0a0c0f;display:none}'
+        '</style></head><body><div class="wrap">'
+        f'<video src="{uri}" autoplay muted loop playsinline controls></video>'
+        '<div id="vseam" class="seam" style="left:50%;top:0;height:100%;transform:translateX(-50%)"></div>'
+        '<div id="hseam" class="seam" style="top:50%;left:0;width:100%;transform:translateY(-50%)"></div>'
+        '<script>(function(){'
+        'var v=document.querySelector("video"),wrap=document.querySelector(".wrap");'
+        'var vs=document.getElementById("vseam"),hs=document.getElementById("hseam");'
+        f'var frac={frac:.8f},vis={vis},speed={speed};'
+        'function spd(){try{v.playbackRate=speed;}catch(e){}}'
+        'function layout(){if(!vis){return;}var W=wrap.clientWidth,t=frac*W,op=1;'
+        'if(t<1){op=t;t=1;}vs.style.display="block";hs.style.display="block";'
+        'vs.style.width=t+"px";vs.style.opacity=op;hs.style.height=t+"px";hs.style.opacity=op;}'
+        'v.addEventListener("loadedmetadata",spd);v.addEventListener("play",spd);spd();'
+        'window.addEventListener("resize",layout);layout();setTimeout(layout,200);'
+        '})();</script>'
+        '</div></body></html>')
+
 
 is_video=(pattern=='동영상(연속 영상)')
 image=None
 if not is_video:
     scene=load_scene(pattern,subject)
-    image=render_wall(scene,w,h,seam,display_mode,show_seam)
+    image=render_wall(scene,w,seam,show_seam)
+
 main,details=st.columns([1.85,1],gap='large')
 with main:
-    st.subheader('4모듈 OLED 화면 구성')
+    st.markdown('<div class="sec">4모듈 OLED 월 미리보기</div>', unsafe_allow_html=True)
     if is_video:
-        components.html(seam_wall_html(VIDEO_FILES[video_key],w,seam,display_mode,show_seam,video_speed),height=440)
-        st.caption(('실제 패널·이음새 치수 비율' if display_mode=='실제 치수 비율' else '이음새를 확대해 강조') + ' · 음소거 자동 반복 재생 · 단일 연속 영상을 2×2로 분할')
-        st.info('동영상은 하나의 연속 영상 위에 2×2 이음새를 겹쳐 보여줍니다. 실제 치수 비율에서는 이음새가 매우 가늘어 거의 보이지 않을 수 있으니 "이음새 확대"로 비교해 보세요. (소리 없음)')
+        components.html(seam_wall_html(VIDEO_FILES[video_key],wall_frac,show_seam,video_speed),height=480)
+        st.markdown('<p class="cap">단일 연속 영상을 2×2로 분할 · 음소거 자동 반복 재생 · 이음새는 실제 치수 비율(소리 없음)</p>', unsafe_allow_html=True)
     else:
-        st.image(image,caption=('실제 패널·이음새 치수 비율' if display_mode=='실제 치수 비율' else '이음새를 확대해 강조한 비교 화면') + ' · 4개 영역 모두 단일 원본 이미지 기반',use_container_width=True)
-        st.info('컬러 패턴은 하나의 원본 이미지를 2×2로 분할한 연속 콘텐츠입니다. 이음새 OFF와 ON을 비교해 보세요.')
+        st.image(image,use_container_width=True)
+        st.markdown('<p class="cap">4개 영역 모두 단일 원본을 분할한 연속 콘텐츠 · 이음새는 실제 치수 비율</p>', unsafe_allow_html=True)
         mem=io.BytesIO();image.save(mem,format='PNG')
         st.download_button('현재 화면 PNG 저장',data=mem.getvalue(),file_name='smartwall_seam_preview.png',mime='image/png')
+    st.markdown('<p class="cap">실제 치수 비율에서 이음새는 전체 벽 폭의 약 0.03% 수준이라 서브픽셀로 거의 보이지 않는 것이 정상입니다. 베젤·기구 간격을 키우거나 이음새 표시를 끄고 켜며 비교해 보세요. 흰 배경·사진·동영상 모두 동일한 비율로 그려집니다.</p>', unsafe_allow_html=True)
+
 with details:
-    st.subheader('계산 결과')
-    st.metric('전체 이음새 폭',f'{seam:.2f} mm',help='베젤 두 개 + 기구적 간격')
-    st.metric('시야각 (해당 시청 거리)',f'{angle:.2f}′')
+    st.markdown('<div class="sec">계산 결과</div>', unsafe_allow_html=True)
     c1,c2=st.columns(2)
-    c1.metric('픽셀 환산 폭',f'{seam/pitch:.2f} px')
-    c2.metric('4K 픽셀 피치',f'{pitch:.3f} mm')
-    st.write(f'**패널 1장 활성 화면:** {w:,.1f} × {h:,.1f} mm')
-    st.write(f'**단일 패널 폭 대비 이음새:** {100*seam/w:.4f}%')
-    st.write(f'**전체 벽 폭 대비(화면 렌더 비율):** {100*seam/(2*w+seam):.4f}% · 화면 1000px당 약 {seam/(2*w+seam)*1000:.2f}px')
-    st.write(f'**{dist:g}m에서 1분각 길이:** {arc_one:.2f} mm')
-    st.markdown('**이음새 구성**')
-    st.write(f'{bezel:.2f} (좌 베젤) + {gap:.2f} (기구 간격) + {bezel:.2f} (우 베젤) = **{seam:.2f} mm**')
+    c1.metric('전체 이음새 폭',f'{seam:.2f} mm',help='베젤 두 개 + 기구적 간격')
+    c2.metric('시야각',f'{angle:.2f}′',help=f'{dist:g}m 시청 거리 기준')
+    c3,c4=st.columns(2)
+    c3.metric('픽셀 환산 폭',f'{seam/pitch:.2f} px')
+    c4.metric('4K 픽셀 피치',f'{pitch:.3f} mm')
+    st.markdown(f'''<div class="panel">
+<div class="row"><span>패널 1장 활성 화면</span><b>{w:,.1f} × {h:,.1f} mm</b></div>
+<div class="row"><span>단일 패널 폭 대비 이음새</span><b>{100*seam/w:.4f}%</b></div>
+<div class="row"><span>전체 벽 폭 대비 (화면 렌더 비율)</span><b>{100*wall_frac:.4f}%</b></div>
+<div class="row"><span>화면 1000px당 이음새</span><b>약 {wall_frac*1000:.2f} px</b></div>
+<div class="row"><span>{dist:g}m에서 1분각 길이</span><b>{arc_one:.2f} mm</b></div>
+<div class="row"><span>이음새 구성 (좌+간격+우)</span><b>{bezel:.2f} + {gap:.2f} + {bezel:.2f} = {seam:.2f} mm</b></div>
+</div>''', unsafe_allow_html=True)
     if 1.5 <= seam <= 2.5:
-        st.success('팀 PPT의 잠정 목표 2.0 ± 0.5 mm 범위 내')
+        st.markdown('<div class="status ok">✓ 팀 PPT의 잠정 목표 2.0 ± 0.5 mm 범위 내</div>', unsafe_allow_html=True)
     else:
-        st.warning('팀 PPT의 잠정 목표 2.0 ± 0.5 mm 범위 밖')
-    st.caption('이 비교는 사전 설계 목표와의 비교이며, 실제 품질 합격 판정이 아닙니다.')
-    st.caption('시청 거리는 시야각(분각) 계산에만 영향을 주며, 화면에 그려지는 이음새 비율은 바꾸지 않습니다. 실제 치수 비율에서 이음새는 전체 벽 폭의 약 0.03% 수준이라 서브픽셀로 거의 보이지 않는 것이 정상입니다 — "이음새 확대"로 비교하세요.')
+        st.markdown('<div class="status off">! 팀 PPT의 잠정 목표 2.0 ± 0.5 mm 범위 밖</div>', unsafe_allow_html=True)
+    st.markdown('<p class="cap">사전 설계 목표와의 비교이며 실제 품질 합격 판정이 아닙니다. 시청 거리는 시야각(분각)에만 영향을 주고, 화면에 그려지는 이음새 비율은 바꾸지 않습니다.</p>', unsafe_allow_html=True)
 
 st.divider()
-st.subheader('설계안 비교: 현재 조건과 1mm 이음새')
+st.markdown('<div class="sec">설계안 비교 · 현재 조건과 1mm 이음새</div>', unsafe_allow_html=True)
 comparison=pd.DataFrame([
     {'설계안':'현재 입력','이음새 폭(mm)':round(seam,2),'시야각(분각)':round(angle,3),'픽셀 환산(px)':round(seam/pitch,2)},
     {'설계안':'이음새 1mm 가정','이음새 폭(mm)':1.0,'시야각(분각)':round(math.degrees(2*math.atan(1/(2*dist*1000)))*60,3),'픽셀 환산(px)':round(1/pitch,2)},
 ])
 st.dataframe(comparison,hide_index=True,use_container_width=True)
 st.download_button('비교 결과 CSV 다운로드',data=comparison.to_csv(index=False).encode('utf-8-sig'),file_name='smartwall_seam_metrics.csv',mime='text/csv')
-with st.expander('계산식·적용 범위·해석상 주의사항'):
+
+with st.expander('계산식 · 적용 범위 · 해석상 주의사항'):
     st.latex(r'W = D\times 25.4\times \frac{16}{\sqrt{16^2+9^2}}')
     st.latex(r'S = 2B + G')
     st.latex(r'\theta_{arcmin} = 2\arctan\left(\frac{S}{2L}\right)\frac{180\times60}{\pi}')
