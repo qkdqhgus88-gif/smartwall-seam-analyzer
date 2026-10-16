@@ -122,7 +122,7 @@ def room_data_uri():
 
 # Display (active 2×2 screen) corners in the frontal room render, as fractions of the image (TL,TR,BR,BL).
 ROOM_AR_W=1024.0; ROOM_AR_H=683.0
-SCREEN_CORNERS=[[0.127,0.085],[0.872,0.085],[0.872,0.717],[0.127,0.717]]
+SCREEN_CORNERS=[[0.140,0.070],[0.886,0.070],[0.886,0.717],[0.140,0.717]]
 
 
 def room_html(kind, uri, color, frac, visible, speed=0.5):
